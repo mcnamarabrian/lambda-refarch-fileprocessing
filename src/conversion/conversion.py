@@ -6,12 +6,35 @@ import boto3
 import botocore
 import markdown
 import tempfile
+import logging
 
 max_object_size = 104857600  # 100MB = 104857600 bytes
 
 target_bucket = os.getenv('TARGET_BUCKET')
 
+logging_level = 'logging.' + os.getenv('LOGGING_LEVEL')
+print(logging_level)
+
 s3_resource = boto3.resource('s3')
+
+root = logging.getLogger()
+if root.handlers:
+    for handler in root.handlers:
+        root.removeHandler(handler)
+logging.basicConfig(level=logging.INFO, format='%(message)s')
+
+
+class StructuredMessage(object):
+    def __init__(self, message, **kwargs):
+        self.message = message
+        self.kwargs = kwargs
+
+    def __str__(self):
+        return '%s >>> %s' % (self.message, json.dumps(self.kwargs))
+
+
+_ = StructuredMessage   # optional, to improve readability
+logging.info(_('message 1', foo='bar', bar='baz', num=123, fnum=123.456))
 
 
 def check_s3_object_size(bucket, key_name):
@@ -63,20 +86,16 @@ def handler(event, context):
     for record in event['Records']:
         tmpdir = tempfile.mkdtemp()
 
-        log_event = {}
-
-        log_event['request_id'] = context.aws_request_id
-        log_event['invoked_function_arn'] = context.invoked_function_arn
-        log_event['sqs_message_id'] = record['messageId']
-        log_event['sqs_event_source_arn'] = record['eventSourceARN']
-
+        logging.info(_('EventInfo',
+                       request_id=context.aws_request_id,
+                       invoked_function_arn=context.invoked_function_arn,
+                       sqs_message_id=record['messageId'],
+                       sqs_event_source_arn=['eventSourceARN']))
         try:
             json_body = json.loads(record['body'])
             request_params = json_body['detail']['requestParameters']
             bucket_name = request_params['bucketName']
             key_name = request_params['key']
-            log_event['source_s3_bucket_name'] = bucket_name
-            log_event['source_s3_key_name'] = key_name
 
             size = check_s3_object_size(bucket_name, key_name)
 
@@ -85,12 +104,18 @@ def handler(event, context):
             download_status = get_s3_object(bucket_name, key_name, local_file)
 
             if download_status == 'ok':
-                log_event['src_s3_download'] = 'ok'
                 key_bytes = os.stat(local_file).st_size
-                log_event['src_s3_download_bytes'] = key_bytes
+                logging.info(_('S3DownloadSucess',
+                               src_s3_download='ok',
+                               src_s3_download_bytes=key_bytes,
+                               source_s3_bucket_name=bucket_name,
+                               source_s3_key_name=key_name))
             else:
-                log_event['src_s3_download'] = download_status
-                log_event['src_s3_download_bytes'] = -1
+                logging.info(_('S3DownloadFailure',
+                               src_s3_download=download_status,
+                               src_s3_download_bytes=-1,
+                               source_s3_bucket_name=bucket_name,
+                               source_s3_key_name=key_name))
                 sys.exit(1)
 
             html = convert_to_html(local_file)
@@ -109,26 +134,32 @@ def handler(event, context):
                                       local_html_file)
 
             if html_upload == 'ok':
-                log_event['dst_s3_object'] = 's3://{}/{}'.format(target_bucket,
-                                                                 html_filename)
+                logging.info(_('DestinationObject',
+                               dst_s3_object=f's3://{target_bucket}/{html_filename}'))
             else:
-                log_event['dst_s3_object'] = ''
+                logging.info(_('DestinationObject', dst_s3_object=''))
 
-            log_event['dst_s3_upload'] = html_upload
+            logging.info(_('DestinationUpload', dst_s3_upload=html_upload))
 
         except Exception as e:
-            log_event['error_msg'] = str(e)
-            print(log_event)
+            logging.info(_('ProcessingFailure', error_msg=str(e)))
             return 'fail'
 
         finally:
             filesToRemove = os.listdir(tmpdir)
+  
             for f in filesToRemove:
                 file_path = os.path.join(tmpdir, f)
-                print(f'Removing File: {file_path}')
-                os.remove(file_path)
-            print(f'Removing Folder: {tmpdir}')
+                logging.info(_('Cleanup', removed_file=file_path))
+
+                try:
+                    os.remove(file_path)
+                except OSError as e:
+                    print(e)
+                    logging.info(_('CleanupFailed', could_not_remove_file=file_path))
+
+            logging.info(_('Cleanup', removed_folder=tmpdir))
             os.rmdir(tmpdir)
 
-        print(log_event)
+        #print(log_event)
         return 'ok'

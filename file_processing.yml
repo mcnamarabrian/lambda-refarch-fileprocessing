@@ -2,6 +2,12 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: 'AWS::Serverless-2016-10-31'
 Description: SAM template to create file processing architecture represented at TBD.
 
+Globals:
+  Function:
+    Environment:
+      Variables:
+        LOGGING_LEVEL: 'INFO'
+
 Resources:
   InputBucket:
     Type: AWS::S3::Bucket
