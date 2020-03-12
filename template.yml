@@ -26,7 +26,7 @@ Resources:
   InputBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub ${AWS::StackName}-${AWS::AccountId}-input-bucket
+      BucketName: !Sub file-processor-${AWS::AccountId}-input-bucket
       NotificationConfiguration:
         TopicConfigurations:
         - Event: s3:ObjectCreated:*
@@ -49,7 +49,7 @@ Resources:
               StringEquals:
                 aws:SourceAccount: !Sub ${AWS::AccountId}
               ArnEquals:
-                aws:SourceArn: !Sub "arn:aws:s3:::${InputBucket}"
+                aws:SourceArn: !Sub 'arn:aws:s3:::file-processor-${AWS::AccountId}-input-bucket'
       Topics:
         - !Ref NotificationTopic
 
