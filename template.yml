@@ -26,7 +26,7 @@ Resources:
   InputBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub file-processor-${AWS::AccountId}-input-bucket
+      BucketName: !Sub ${AWS::StackName}-${AWS::AccountId}-inputbucket
       NotificationConfiguration:
         TopicConfigurations:
         - Event: s3:ObjectCreated:*
