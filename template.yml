@@ -197,11 +197,6 @@ Resources:
       MemorySize: 256
       Timeout: 10
       Tracing: Active
-      EventInvokeConfig:
-        DestinationConfig:
-          OnFailure:
-            Type: SQS
-            Destination: !GetAtt SentimentDlq.Arn
       Policies:
         - SQSPollerPolicy:
             QueueName:
@@ -256,6 +251,11 @@ Resources:
           SENTIMENT_TABLE: !Ref SentimentTable
           SENTIMENT_QUEUE: !Ref SentimentQueue
           LOG_LEVEL: !Ref SentimentLogLevel
+      EventInvokeConfig:
+        DestinationConfig:
+          OnFailure:
+            Type: SQS
+            Destination: !GetAtt SentimentDlq.Arn
       Events:
         SentimentQueueReaderEvent:
           Type: SQS
