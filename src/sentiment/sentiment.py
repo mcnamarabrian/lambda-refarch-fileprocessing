@@ -89,8 +89,6 @@ def get_s3_object(bucket, key_name, local_file):
     subsegment = xray_recorder.current_subsegment()
     subsegment.put_metadata('object', f's3://{bucket}/{key_name}')
 
-    print("hello hello hello")
-
     try:
         s3_resource.Bucket(bucket).download_file(key_name, local_file)
         result = 'ok'
