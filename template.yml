@@ -71,6 +71,30 @@ Resources:
         - !Ref ConversionQueue
         - !Ref SentimentQueue
 
+  ApplyS3NotificationLambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: notification.handler
+      Runtime: python3.6
+      CodeUri: ./src/notification/
+      Timeout: 60
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: s3:PutBucketNotification
+              Resource:
+                - !Sub 'arn:aws:s3:::${InputBucket}'
+                - !Sub 'arn:aws:s3:::${InputBucket}/*'
+
+  ApplyInputBucketTrigger:
+    Type: Custom::ApplyS3Notification
+    Properties:
+      ServiceToken: !GetAtt ApplyS3NotificationLambdaFunction.Arn
+      S3Bucket: !Ref InputBucket
+      SnsArn: !Ref NotificationTopic
+      NotificationId: S3ObjectCreatedEvent
+
   ConversionSubscription:
     Type: AWS::SNS::Subscription
     Properties:
@@ -84,9 +108,6 @@ Resources:
     DependsOn: ConversionDlq
     Properties:
       VisibilityTimeout: 60
-      RedrivePolicy:
-        deadLetterTargetArn: !GetAtt ConversionDlq.Arn
-        maxReceiveCount: 5
 
   ConversionDlq:
     Type: AWS::SQS::Queue
@@ -94,7 +115,7 @@ Resources:
       VisibilityTimeout: 300
           
   ConversionFunction:
-    Type: 'AWS::Serverless::Function'
+    Type: AWS::Serverless::Function
     DependsOn: ConversionTargetBucket
     Properties:
       Description: Convert and store HTML representation of uploaded S3 objects
@@ -104,11 +125,6 @@ Resources:
       MemorySize: 256
       Timeout: 10
       Tracing: Active
-      EventInvokeConfig:
-        DestinationConfig:
-          OnFailure:
-            Type: SQS
-            Destination: !GetAtt ConversionDlq.Arn
       Policies:
         - SQSPollerPolicy:
             QueueName:
@@ -120,12 +136,7 @@ Resources:
                 - s3:GetObject
                 - s3:GetObjectAcl
                 - s3:GetObjectVersion
-              Resource:
-                Fn::Join:
-                  - ''
-                  - - 'arn:aws:s3:::'
-                    - Ref: InputBucket
-                    - '/*'
+              Resource: !Sub 'arn:aws:s3:::${InputBucket}/*'
             - Effect: Allow
               Action:
                 - s3:ListBucket
@@ -155,6 +166,11 @@ Resources:
           TARGET_BUCKET: !Ref ConversionTargetBucket
           CONVERSION_QUEUE: !Ref ConversionQueue
           LOG_LEVEL: !Ref ConversionLogLevel
+      EventInvokeConfig:
+        DestinationConfig:
+          OnFailure:
+            Type: SQS
+            Destination: !GetAtt ConversionDlq.Arn
       Events:
         ConversionQueueReaderEvent:
           Type: SQS
@@ -178,9 +194,6 @@ Resources:
     DependsOn: SentimentDlq
     Properties:
       VisibilityTimeout: 60
-      RedrivePolicy:
-        deadLetterTargetArn: !GetAtt SentimentDlq.Arn
-        maxReceiveCount: 5
 
   SentimentDlq:
     Type: AWS::SQS::Queue
@@ -188,7 +201,7 @@ Resources:
       VisibilityTimeout: 300
 
   SentimentFunction:
-    Type: 'AWS::Serverless::Function'
+    Type: AWS::Serverless::Function
     Properties:
       Description: Detect and store sentiment from uploaded S3 objects
       Handler: sentiment.handler
