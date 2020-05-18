@@ -1,6 +1,4 @@
 packaged-template.yml
 .aws-sam
-.vscode
 .idea
-.history
 __pycache__
